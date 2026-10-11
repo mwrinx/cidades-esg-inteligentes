@@ -1,0 +1,37 @@
+services:
+  app:
+    image: ${APP_IMAGE:-cidades-esg:local}
+    build: .
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/cidades_esg
+      DB_USER: esg
+      DB_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD}
+      APP_ENV: ${APP_ENV:-local}
+      APP_VERSION: ${APP_VERSION:-local}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [esg]
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: cidades_esg
+      POSTGRES_USER: esg
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD}
+    volumes:
+      - dados:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U esg -d cidades_esg"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks: [esg]
+volumes:
+  dados:
+networks:
+  esg:
+    driver: bridge

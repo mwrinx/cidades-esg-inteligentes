@@ -1,0 +1,66 @@
+name: Build, testes e deploy ESG na nuvem
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: esg-cloud-deploy
+  cancel-in-progress: false
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Build automático
+        run: mvn -B compile
+      - name: Testes e empacotamento
+        run: mvn -B verify
+      - name: Relatórios de testes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testes
+          path: target/surefire-reports/
+      - name: Validar Dockerfile
+        run: docker build -t cidades-esg:${{ github.sha }} .
+  staging:
+    needs: build-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Deploy e smoke test staging
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+          APP_URL: ${{ vars.APP_URL }}
+          EXPECTED_ENV: staging
+          COMMIT_SHA: ${{ github.sha }}
+        run: python scripts/render_deploy.py
+  production:
+    needs: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Deploy e smoke test produção
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+          APP_URL: ${{ vars.APP_URL }}
+          EXPECTED_ENV: production
+          COMMIT_SHA: ${{ github.sha }}
+        run: python scripts/render_deploy.py
